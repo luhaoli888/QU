@@ -3,16 +3,17 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="英雄数据专业平衡性分析", layout="wide")
+# 页面配置
+st.set_page_config(page_title="英雄数据专业平衡性分析系统", layout="wide")
 
-# --- 视觉配色升级 ---
-COLOR_NORMAL = '#7D99C8'  
-COLOR_ABNORMAL = '#E67E7E' 
-COLOR_BRIGHT_AXIS = '#FFB300' # 【新增】更亮的警戒线颜色
+# --- 视觉配色方案 ---
+COLOR_NORMAL = '#7D99C8'    # 柔和灰蓝 (登场率/正常)
+COLOR_ABNORMAL = '#E67E7E'  # 柔和珊瑚红 (Ban率*10/异常)
+COLOR_BRIGHT_AXIS = '#FFB300' # 明亮的警戒线 (琥珀金)
 GRID_COLOR = 'rgba(200, 200, 200, 0.3)'
 
 # ==========================================
-# ⚙️ 平衡性参数配置表 (针对 Low, Normal, High)
+# ⚙️ 平衡性参数配置表
 # ==========================================
 MMR_THRESHOLDS = {
     'low':    (54.5, 52.5, 49.0),
@@ -24,8 +25,8 @@ def check_hero_status(row, global_b_avg):
     mmr = row['MMR']
     if mmr == 'elite':
         presence = row['出现率']
-        if presence > 45: return 1
-        if presence < 5: return -1
+        if presence > 45: return 1   
+        if presence < 5: return -1   
         return 0
     
     br = row['Ban率']
@@ -59,17 +60,21 @@ def process_data_logic(file):
     overall_avg_ban = df_full['Ban率'].mean()
     df_full['Ban权值'] = df_full['Ban率'] * 10
     df_full['出现率'] = df_full['登场率'] + df_full['Ban权值']
-    df_filtered = df_full[df_full['登场率'] > 0.75].copy()
     
+    df_full['展示标签'] = df_full['英雄名'] + " (" + df_full['位置'] + ")"
+    
+    df_filtered = df_full[df_full['登场率'] > 0.75].copy()
     return df_filtered, overall_avg_ban
 
-# --- 界面展示 ---
-uploaded_file = st.sidebar.file_uploader("上传您的 Excel 文件", type=["xlsx", "xls"])
+# --- 侧边栏 ---
+st.sidebar.header("数据导入")
+uploaded_file = st.sidebar.file_uploader("上传英雄数据 Excel", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     try:
         df, global_b_avg = process_data_logic(uploaded_file)
         
+        # 预警板块
         st.write(f"### 🚨 平衡性概览")
         op_data, weak_data = [], []
         
@@ -106,57 +111,79 @@ if uploaded_file is not None:
             else: st.info("暂无表现极差的英雄")
 
         st.markdown("---")
-        positions = ['大龙路', '打野', '中路', '小龙路', '游走']
-        mmrs = ['elite', 'high', 'normal', 'low']
-        selected_pos = st.radio("📍 选择位置:", positions, horizontal=True)
-        selected_mmr = st.radio("🏆 选择段位:", mmrs, horizontal=True)
         
-        filtered_df = df[(df['位置'] == selected_pos) & (df['MMR'] == selected_mmr)].copy()
+        # 详细诊断看板
+        positions = ['全部', '大龙路', '打野', '中路', '小龙路', '游走']
+        mmrs = ['elite', 'high', 'normal', 'low']
+        
+        col_ctrl1, col_ctrl2 = st.columns(2)
+        with col_ctrl1:
+            selected_pos = st.radio("📍 选择位置视角:", positions, horizontal=True)
+        with col_ctrl2:
+            selected_mmr = st.radio("🏆 选择分段视角:", mmrs, horizontal=True)
+        
+        if selected_pos == '全部':
+            filtered_df = df[df['MMR'] == selected_mmr].copy()
+            label_col = '展示标签' 
+        else:
+            filtered_df = df[(df['位置'] == selected_pos) & (df['MMR'] == selected_mmr)].copy()
+            label_col = '英雄名'   
+
+        dynamic_height = max(800, len(filtered_df) * 22)
         
         if not filtered_df.empty:
             if selected_mmr == 'elite':
                 filtered_df = filtered_df.sort_values('出现率', ascending=True)
                 fig = go.Figure()
-                fig.add_trace(go.Bar(y=filtered_df['英雄名'], x=filtered_df['登场率'], name='登场率', 
-                                    orientation='h', marker_color=COLOR_NORMAL))
-                fig.add_trace(go.Bar(y=filtered_df['英雄名'], x=filtered_df['Ban权值'], name='Ban率*10', 
-                                    orientation='h', marker_color=COLOR_ABNORMAL))
                 
-                # 【增亮】垂直警戒线
+                fig.add_trace(go.Bar(y=filtered_df[label_col], x=filtered_df['Ban权值'], 
+                                    name='Ban率*10', orientation='h', marker_color=COLOR_ABNORMAL))
+                fig.add_trace(go.Bar(y=filtered_df[label_col], x=filtered_df['登场率'], 
+                                    name='登场率', orientation='h', marker_color=COLOR_NORMAL))
+                
                 fig.add_vline(x=45, line_width=3, line_color=COLOR_BRIGHT_AXIS)
                 fig.add_vline(x=5, line_width=3, line_color=COLOR_BRIGHT_AXIS)
                 
-                fig.update_layout(barmode='stack', height=1200, xaxis_title="出现率 (%)",
-                                 xaxis=dict(showgrid=True, gridcolor=GRID_COLOR, tickmode='linear', dtick=5),
-                                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                fig.update_layout(
+                    barmode='stack', height=dynamic_height, 
+                    xaxis_title="出现率 (%) [左红:Ban压 | 右蓝:登场]",
+                    xaxis=dict(showgrid=True, gridcolor=GRID_COLOR, tickmode='linear', dtick=5),
+                    showlegend=False, # 【核心修改】隐藏图例
+                    margin=dict(t=50, b=50, l=150, r=50) # 优化边缘间距
+                )
                 st.plotly_chart(fig, use_container_width=True)
 
             else:
                 y_ul, y_ur, y_lo = MMR_THRESHOLDS.get(selected_mmr, (54.5, 52.5, 49.0))
                 filtered_df['平衡状态'] = filtered_df.apply(lambda r: "异常" if check_hero_status(r, global_b_avg) != 0 else "正常", axis=1)
+                
                 max_x = max(filtered_df['Ban率'].max(), 5 * global_b_avg) * 1.05
                 min_y, max_y = min(filtered_df['修复胜率'].min(), y_lo) - 0.5, max(filtered_df['修复胜率'].max(), y_ul) + 0.5
                 
-                fig_2d = px.scatter(filtered_df, x='Ban率', y='修复胜率', size='登场率', text='英雄名',
+                fig_2d = px.scatter(filtered_df, x='Ban率', y='修复胜率', size='登场率', text=label_col,
                                     color='平衡状态', color_discrete_map={'正常': COLOR_NORMAL, '异常': COLOR_ABNORMAL}, 
-                                    height=1200, size_max=40)
+                                    height=dynamic_height, size_max=40)
                 
                 fig_2d.update_traces(marker=dict(opacity=0.4, line=dict(width=1, color='rgba(50,50,50,0.1)')), 
-                                     textposition='middle right', textfont=dict(size=11), cliponaxis=False)
+                                     textposition='middle right', textfont=dict(size=10), cliponaxis=False)
                 
-                # 【增亮】削弱与加强警戒线
                 fig_2d.add_trace(go.Scatter(x=[0, global_b_avg, 5 * global_b_avg, max_x], y=[y_ul, y_ul, y_ur, y_ur],
-                                            mode='lines', line=dict(color=COLOR_BRIGHT_AXIS, width=3), name='削弱警戒线'))
+                                            mode='lines', line=dict(color=COLOR_BRIGHT_AXIS, width=3), name='削弱线'))
                 fig_2d.add_trace(go.Scatter(x=[0, max_x], y=[y_lo, y_lo], mode='lines', 
-                                            line=dict(color=COLOR_BRIGHT_AXIS, width=3), name='加强警戒线'))
+                                            line=dict(color=COLOR_BRIGHT_AXIS, width=3), name='加强线'))
                 
                 fig_2d.add_vline(x=0, line_width=2, line_color='rgba(80,80,80,0.6)')
                 fig_2d.add_hline(y=40, line_width=2, line_color='rgba(80,80,80,0.6)')
 
                 fig_2d.update_xaxes(ticksuffix='%', range=[-0.5, max_x], showgrid=True, gridcolor=GRID_COLOR)
                 fig_2d.update_yaxes(ticksuffix='%', range=[min_y, max_y], showgrid=True, gridcolor=GRID_COLOR)
-                fig_2d.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                fig_2d.update_layout(
+                    showlegend=False, # 【核心修改】隐藏图例
+                    margin=dict(t=50, b=50, l=50, r=50)
+                )
                 st.plotly_chart(fig_2d, use_container_width=True)
             
     except Exception as e:
         st.error(f"处理错误: {e}")
+else:
+    st.info("👈 请在左侧上传 Excel 文件。")
