@@ -129,10 +129,11 @@ if uploaded_file is not None:
             filtered_df = df[(df['位置'] == selected_pos) & (df['MMR'] == selected_mmr)].copy()
             label_col = '英雄名'   
 
-        dynamic_height = max(800, len(filtered_df) * 22)
-        
         if not filtered_df.empty:
             if selected_mmr == 'elite':
+                # Elite 柱状图：在“全部”视图下保持自适应高度，防止名字重叠
+                dynamic_height_bar = max(800, len(filtered_df) * 22) if selected_pos == '全部' else 800
+                
                 filtered_df = filtered_df.sort_values('出现率', ascending=True)
                 fig = go.Figure()
                 
@@ -145,15 +146,18 @@ if uploaded_file is not None:
                 fig.add_vline(x=5, line_width=3, line_color=COLOR_BRIGHT_AXIS)
                 
                 fig.update_layout(
-                    barmode='stack', height=dynamic_height, 
+                    barmode='stack', height=dynamic_height_bar, 
                     xaxis_title="出现率 (%) [左红:Ban压 | 右蓝:登场]",
                     xaxis=dict(showgrid=True, gridcolor=GRID_COLOR, tickmode='linear', dtick=5),
-                    showlegend=False, # 【核心修改】隐藏图例
-                    margin=dict(t=50, b=50, l=150, r=50) # 优化边缘间距
+                    showlegend=False,
+                    margin=dict(t=50, b=50, l=150, r=50)
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
             else:
+                # 散点图：高度固定回退至 1000px 左右
+                fixed_height_scatter = 1000
+                
                 y_ul, y_ur, y_lo = MMR_THRESHOLDS.get(selected_mmr, (54.5, 52.5, 49.0))
                 filtered_df['平衡状态'] = filtered_df.apply(lambda r: "异常" if check_hero_status(r, global_b_avg) != 0 else "正常", axis=1)
                 
@@ -162,7 +166,7 @@ if uploaded_file is not None:
                 
                 fig_2d = px.scatter(filtered_df, x='Ban率', y='修复胜率', size='登场率', text=label_col,
                                     color='平衡状态', color_discrete_map={'正常': COLOR_NORMAL, '异常': COLOR_ABNORMAL}, 
-                                    height=dynamic_height, size_max=40)
+                                    height=fixed_height_scatter, size_max=40)
                 
                 fig_2d.update_traces(marker=dict(opacity=0.4, line=dict(width=1, color='rgba(50,50,50,0.1)')), 
                                      textposition='middle right', textfont=dict(size=10), cliponaxis=False)
@@ -178,7 +182,7 @@ if uploaded_file is not None:
                 fig_2d.update_xaxes(ticksuffix='%', range=[-0.5, max_x], showgrid=True, gridcolor=GRID_COLOR)
                 fig_2d.update_yaxes(ticksuffix='%', range=[min_y, max_y], showgrid=True, gridcolor=GRID_COLOR)
                 fig_2d.update_layout(
-                    showlegend=False, # 【核心修改】隐藏图例
+                    showlegend=False,
                     margin=dict(t=50, b=50, l=50, r=50)
                 )
                 st.plotly_chart(fig_2d, use_container_width=True)
