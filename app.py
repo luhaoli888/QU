@@ -47,7 +47,6 @@ def process_data_logic(file):
     df_main = pd.read_excel(file, sheet_name='SheetData', usecols=cols_to_keep)
     df_ban = pd.read_excel(file, sheet_name='SheetData1')
     
-    # 统一清理函数：处理百分号、空格并强制转为数字，无法转换的变为空值
     def clean_to_float(series):
         return pd.to_numeric(series.astype(str).str.replace('%', '', regex=False).str.strip(), errors='coerce')
 
@@ -58,19 +57,16 @@ def process_data_logic(file):
     if 'Ban率' in df_ban.columns:
         df_ban['Ban率'] = clean_to_float(df_ban['Ban率'])
     
-    # 合并并删除缺失关键数据的行
     df_full = pd.merge(df_main, df_ban, on=['英雄名', 'MMR'], how='left')
     df_full = df_full.dropna(subset=['Ban率', '修复胜率', '登场率'])
     
-    # 【修复处】确保此时 Ban率 已经是纯 float 格式再求均值
     overall_avg_ban = df_full['Ban率'].mean()
-    
     df_full['Ban权值'] = df_full['Ban率'] * 10
     df_full['出现率'] = df_full['登场率'] + df_full['Ban权值']
     df_full['展示标签'] = df_full['英雄名'] + " (" + df_full['位置'] + ")"
     
     df_filtered = df_full[df_full['登场率'] > 0.75].copy()
-    return df_filtered, overall_avg_ban
+    return df_filtered, overall_avg_ban, df_full # 返回全量df供专项分析使用
 
 # --- 侧边栏 ---
 st.sidebar.header("数据导入")
@@ -78,45 +74,78 @@ uploaded_file = st.sidebar.file_uploader("上传英雄数据 Excel", type=["xlsx
 
 if uploaded_file is not None:
     try:
-        df, global_b_avg = process_data_logic(uploaded_file)
+        df, global_b_avg, df_raw = process_data_logic(uploaded_file)
         
-        st.write(f"### 🚨 平衡性概览")
-        op_data, weak_data = [], []
+        # ==========================================
+        # 🚨 预警标签页板块
+        # ==========================================
+        st.write(f"### 🚨 智能数据预警")
+        tab_summary, tab_elite_win = st.tabs(["核心平衡性预警", "Elite 胜率预警"])
         
-        for (pos, name), group in df.groupby(['位置', '英雄名']):
-            op_mmrs, weak_mmrs = [], []
-            for _, row in group.iterrows():
-                status = check_hero_status(row, global_b_avg)
-                if status == 1: op_mmrs.append(row['MMR'])
-                elif status == -1: weak_mmrs.append(row['MMR'])
+        with tab_summary:
+            op_data, weak_data = [], []
+            for (pos, name), group in df.groupby(['位置', '英雄名']):
+                op_mmrs, weak_mmrs = [], []
+                for _, row in group.iterrows():
+                    status = check_hero_status(row, global_b_avg)
+                    if status == 1: op_mmrs.append(row['MMR'])
+                    elif status == -1: weak_mmrs.append(row['MMR'])
+                
+                if op_mmrs:
+                    op_data.append({"超模英雄": f"[{pos}] {name}", "异常分段详情": ", ".join(op_mmrs), "异常计数": len(op_mmrs)})
+                if len(weak_mmrs) >= 4:
+                    weak_data.append({"下水道(蛆)": f"[{pos}] {name}", "异常计数": len(weak_mmrs)})
+
+            op_df = pd.DataFrame(op_data)
+            if not op_df.empty:
+                op_df = op_df.sort_values(by="异常计数", ascending=False).drop(columns=["异常计数"])
+                op_df.index = range(1, len(op_df) + 1)
+
+            weak_df = pd.DataFrame(weak_data)
+            if not weak_df.empty:
+                weak_df = weak_df.sort_values(by="异常计数", ascending=False).drop(columns=["异常计数"])
+                weak_df.index = range(1, len(weak_df) + 1)
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("🔥 **分段超模 (OP)**")
+                if not op_df.empty: st.table(op_df)
+                else: st.info("暂无超模英雄")
+            with c2:
+                st.markdown("💩 **全段下水道 (蛆)**")
+                if not weak_df.empty: st.table(weak_df)
+                else: st.info("暂无表现极差的英雄")
+
+        with tab_elite_win:
+            # Elite 专项逻辑：修复胜率 > 52% 且 登场率 > 0.5%
+            elite_warn_df = df_raw[
+                (df_raw['MMR'] == 'elite') & 
+                (df_raw['登场率'] > 0.5) & 
+                (df_raw['修复胜率'] > 52)
+            ].copy()
             
-            if op_mmrs:
-                op_data.append({"超模英雄": f"[{pos}] {name}", "异常分段详情": ", ".join(op_mmrs), "异常计数": len(op_mmrs)})
-            if len(weak_mmrs) >= 4:
-                weak_data.append({"下水道(蛆)": f"[{pos}] {name}", "异常计数": len(weak_mmrs)})
-
-        op_df = pd.DataFrame(op_data)
-        if not op_df.empty:
-            op_df = op_df.sort_values(by="异常计数", ascending=False).drop(columns=["异常计数"])
-            op_df.index = range(1, len(op_df) + 1)
-
-        weak_df = pd.DataFrame(weak_data)
-        if not weak_df.empty:
-            weak_df = weak_df.sort_values(by="异常计数", ascending=False).drop(columns=["异常计数"])
-            weak_df.index = range(1, len(weak_df) + 1)
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("🔥 **超模 (OP)**")
-            if not op_df.empty: st.table(op_df)
-            else: st.info("暂无超模英雄")
-        with c2:
-            st.markdown("💩 **蛆 (Underpowered)**")
-            if not weak_df.empty: st.table(weak_df)
-            else: st.info("暂无表现极差的英雄")
+            if not elite_warn_df.empty:
+                # 整理显示格式
+                elite_warn_df = elite_warn_df[['英雄名', '位置', '修复胜率', '登场率']]
+                elite_warn_df = elite_warn_df.sort_values(by='修复胜率', ascending=False)
+                
+                # 格式化百分比
+                elite_warn_df['修复胜率'] = elite_warn_df['修复胜率'].map('{:.2f}%'.format)
+                elite_warn_df['登场率'] = elite_warn_df['登场率'].map('{:.2f}%'.format)
+                
+                # 重置序号
+                elite_warn_df.index = range(1, len(elite_warn_df) + 1)
+                
+                st.markdown("⚠️ **Elite 胜率压制英雄 (胜率>52% & 登场>0.5%)**")
+                st.table(elite_warn_df)
+            else:
+                st.info("当前分段暂无高胜率压制英雄")
 
         st.markdown("---")
         
+        # ==========================================
+        # 详细看板板块
+        # ==========================================
         positions = ['全部', '大龙路', '打野', '中路', '小龙路', '游走']
         mmrs = ['elite', 'high', 'normal', 'low']
         
