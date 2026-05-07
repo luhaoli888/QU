@@ -12,6 +12,9 @@ COLOR_ABNORMAL = '#E67E7E'  # 柔和珊瑚红
 COLOR_BRIGHT_AXIS = '#FFB300' # 明亮的警戒线
 GRID_COLOR = 'rgba(200, 200, 200, 0.3)'
 
+# ==========================================
+# ⚙️ 平衡性参数配置表
+# ==========================================
 MMR_THRESHOLDS = {
     'low':    (54.5, 52.5, 49.0),
     'normal': (54.5, 52.5, 49.0),
@@ -66,7 +69,7 @@ def process_data_logic(file):
     df_full['展示标签'] = df_full['英雄名'] + " (" + df_full['位置'] + ")"
     
     df_filtered = df_full[df_full['登场率'] > 0.75].copy()
-    return df_filtered, overall_avg_ban, df_full # 返回全量df供专项分析使用
+    return df_filtered, overall_avg_ban, df_full 
 
 # --- 侧边栏 ---
 st.sidebar.header("数据导入")
@@ -77,7 +80,7 @@ if uploaded_file is not None:
         df, global_b_avg, df_raw = process_data_logic(uploaded_file)
         
         # ==========================================
-        # 🚨 预警标签页板块
+        # 🚨 智能数据预警板块
         # ==========================================
         st.write(f"### 🚨 智能数据预警")
         tab_summary, tab_elite_win = st.tabs(["核心平衡性预警", "Elite 胜率预警"])
@@ -117,29 +120,26 @@ if uploaded_file is not None:
                 else: st.info("暂无表现极差的英雄")
 
         with tab_elite_win:
-            # Elite 专项逻辑：修复胜率 > 52% 且 登场率 > 0.5%
+            # 【阈值调整】：登场率 > 1% 且 修复胜率 > 53%
             elite_warn_df = df_raw[
                 (df_raw['MMR'] == 'elite') & 
-                (df_raw['登场率'] > 0.5) & 
-                (df_raw['修复胜率'] > 52)
+                (df_raw['登场率'] > 1.0) & 
+                (df_raw['修复胜率'] > 53.0)
             ].copy()
             
             if not elite_warn_df.empty:
-                # 整理显示格式
                 elite_warn_df = elite_warn_df[['英雄名', '位置', '修复胜率', '登场率']]
                 elite_warn_df = elite_warn_df.sort_values(by='修复胜率', ascending=False)
                 
-                # 格式化百分比
+                # 格式化
                 elite_warn_df['修复胜率'] = elite_warn_df['修复胜率'].map('{:.2f}%'.format)
                 elite_warn_df['登场率'] = elite_warn_df['登场率'].map('{:.2f}%'.format)
-                
-                # 重置序号
                 elite_warn_df.index = range(1, len(elite_warn_df) + 1)
                 
-                st.markdown("⚠️ **Elite 胜率压制英雄 (胜率>52% & 登场>0.5%)**")
+                st.markdown("⚠️ **Elite 胜率压制英雄 (胜率>53% & 登场>1%)**")
                 st.table(elite_warn_df)
             else:
-                st.info("当前分段暂无高胜率压制英雄")
+                st.info("当前分段暂无满足该条件的英雄（胜率>53% 且 登场>1%）")
 
         st.markdown("---")
         
