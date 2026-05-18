@@ -16,7 +16,7 @@ st.markdown("""
         padding-top: 2rem !important;
     }
     
-    /* 2. 【核心修复】只改造侧边栏里的 Radio 组件，不影响主页面 */
+    /* 2. 改造侧边栏里的 Radio 组件，不影响主页面 */
     [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label {
         padding: 14px 16px;
         border-radius: 8px;
@@ -129,9 +129,10 @@ if uploaded_file is not None:
         
         st.sidebar.markdown("<br>", unsafe_allow_html=True) 
         
+        # 【新增选项】在侧边栏导航菜单中加入了 🔍 英雄专项搜索
         page_selection = st.sidebar.radio(
             "导航菜单",
-            ["🚨 核心平衡性预警", "⚠️ Elite 胜率预警", "📈 详细图表诊断"],
+            ["🚨 核心平衡性预警", "⚠️ Elite 胜率预警", "📈 详细图表诊断", "🔍 英雄专项搜索"],
             label_visibility="collapsed"
         )
         
@@ -207,7 +208,6 @@ if uploaded_file is not None:
             
             col_ctrl1, col_ctrl2 = st.columns(2)
             with col_ctrl1:
-                # 这里的 st.radio 现在恢复为原生的水平紧凑样式了！
                 selected_pos = st.radio("📍 选择位置视角:", positions, horizontal=True)
             with col_ctrl2:
                 selected_mmr = st.radio("🏆 选择分段视角:", mmrs, horizontal=True)
@@ -258,6 +258,51 @@ if uploaded_file is not None:
                     fig_2d.update_yaxes(ticksuffix='%', range=[min_y, max_y], showgrid=True, gridcolor=GRID_COLOR)
                     fig_2d.update_layout(showlegend=False, margin=dict(t=50, b=50, l=50, r=50))
                     st.plotly_chart(fig_2d, use_container_width=True)
+
+        # ==========================================
+        # 页面 4：🔍 英雄专项搜索 【新页面逻辑】
+        # ==========================================
+        elif page_selection == "🔍 英雄专项搜索":
+            st.write(f"### 🔍 英雄专项多维检索")
+            
+            # 搜索框组件 (去除前后空格，忽略大小写)
+            search_query = st.text_input("输入想要检索的英雄全称：", placeholder="例如：亚索")
+            
+            if search_query:
+                # 从 df_raw (包含未过滤的完整数据集) 提取匹配数据
+                search_target = search_query.strip().lower()
+                hero_result_df = df_raw[df_raw['英雄名'].str.lower() == search_target].copy()
+                
+                if not hero_result_df.empty:
+                    st.success(f"✨ 已成功抓取到 **{search_query}** 的全量多维表现数据：")
+                    
+                    # 1. 第一层划分：按【分路/位置】隔离存放
+                    for position, pos_group in hero_result_df.groupby('位置'):
+                        st.markdown(f"#### 📍 {position} 表现")
+                        
+                        # 2. 第二层划分：固定熟练度(MMR)表现顺序为 Elite -> High -> Normal -> Low
+                        mmr_rank = ['elite', 'high', 'normal', 'low']
+                        pos_group['MMR'] = pd.Categorical(pos_group['MMR'], categories=mmr_rank, ordered=True)
+                        pos_group = pos_group.sort_values('MMR')
+                        
+                        # 3. 提取核心指标进行美化展现
+                        metrics_df = pos_group[['MMR', '修复胜率', '登场率', 'Ban率', '出现率']].copy()
+                        
+                        # 数据格式美化加上百分号
+                        metrics_df['修复胜率'] = metrics_df['修复胜率'].map('{:.2f}%'.format)
+                        metrics_df['登场率'] = metrics_df['登场率'].map('{:.2f}%'.format)
+                        metrics_df['Ban率'] = metrics_df['Ban率'].map('{:.2f}%'.format)
+                        metrics_df['出现率'] = metrics_df['出现率'].map('{:.2f}%'.format)
+                        
+                        # 统一重置表格序号从 1 开始
+                        metrics_df.index = range(1, len(metrics_df) + 1)
+                        
+                        # 渲染输出该分路的熟练度表格
+                        st.table(metrics_df)
+                else:
+                    st.warning(f"🔍 未能在数据集中找到名为 '{search_query}' 的英雄，请确保拼写完全正确。")
+            else:
+                st.info("💡 请在上方输入框内输入英雄名字开始检索（支持跨分路联合查询）。")
                 
     except Exception as e:
         st.error(f"处理错误: {e}")
