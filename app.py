@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import difflib  # 【新增】引入 Python 内置的文本比对库，用于实现模糊搜索
 
 # 页面配置
 st.set_page_config(page_title="英雄数据专业平衡性分析系统", layout="wide")
@@ -259,7 +260,7 @@ if uploaded_file is not None:
                     st.plotly_chart(fig_2d, use_container_width=True)
 
         # ==========================================
-        # 页面 4：🔍 英雄专项搜索 
+        # 页面 4：🔍 英雄专项搜索 【优化：模糊搜索 + 去除成功提示】
         # ==========================================
         elif page_selection == "🔍 英雄专项搜索":
             st.write(f"### 🔍 英雄专项多维检索")
@@ -268,35 +269,48 @@ if uploaded_file is not None:
             
             if search_query:
                 search_target = search_query.strip().lower()
-                hero_result_df = df_raw[df_raw['英雄名'].str.lower() == search_target].copy()
                 
-                # 【阈值过滤】：排除登场率 < 0.5% 的冷门或异常数据
-                if not hero_result_df.empty:
-                    hero_result_df = hero_result_df[hero_result_df['登场率'] >= 0.5]
+                # 提取所有唯一的英雄名列表
+                all_heroes = df_raw['英雄名'].dropna().unique().tolist()
                 
-                if not hero_result_df.empty:
-                    st.success(f"✨ 已成功抓取到 **{search_query}** 的多维表现数据 (已过滤登场率 < 0.5% 的异常记录)：")
+                # 【新增】使用 difflib 进行模糊匹配 (cutoff=0.4 允许一定的错别字容错率)
+                matches = difflib.get_close_matches(search_target, all_heroes, n=1, cutoff=0.4)
+                
+                if matches:
+                    matched_hero = matches[0] # 获取匹配度最高的名字
+                    hero_result_df = df_raw[df_raw['英雄名'] == matched_hero].copy()
                     
-                    for position, pos_group in hero_result_df.groupby('位置'):
-                        st.markdown(f"#### 📍 {position} 表现")
+                    # 【阈值过滤】：排除登场率 < 0.5% 的数据
+                    hero_result_df = hero_result_df[hero_result_df['登场率'] >= 0.5]
+                    
+                    if not hero_result_df.empty:
+                        # 只有在输入和匹配结果不完全一致时，才稍微提醒一下纠错了
+                        if search_target != matched_hero.lower():
+                            st.caption(f"💡 自动为您匹配到最相似的英雄：**{matched_hero}**")
                         
-                        mmr_rank = ['elite', 'high', 'normal', 'low']
-                        pos_group['MMR'] = pd.Categorical(pos_group['MMR'], categories=mmr_rank, ordered=True)
-                        pos_group = pos_group.sort_values('MMR')
-                        
-                        # 【字段精简】：去除了出现率，只保留核心三围
-                        metrics_df = pos_group[['MMR', '修复胜率', '登场率', 'Ban率']].copy()
-                        
-                        metrics_df['修复胜率'] = metrics_df['修复胜率'].map('{:.2f}%'.format)
-                        metrics_df['登场率'] = metrics_df['登场率'].map('{:.2f}%'.format)
-                        metrics_df['Ban率'] = metrics_df['Ban率'].map('{:.2f}%'.format)
-                        
-                        metrics_df.index = range(1, len(metrics_df) + 1)
-                        st.table(metrics_df)
+                        # 按位置循环展示
+                        for position, pos_group in hero_result_df.groupby('位置'):
+                            st.markdown(f"#### 📍 {position} 表现")
+                            
+                            mmr_rank = ['elite', 'high', 'normal', 'low']
+                            pos_group['MMR'] = pd.Categorical(pos_group['MMR'], categories=mmr_rank, ordered=True)
+                            pos_group = pos_group.sort_values('MMR')
+                            
+                            metrics_df = pos_group[['MMR', '修复胜率', '登场率', 'Ban率']].copy()
+                            
+                            metrics_df['修复胜率'] = metrics_df['修复胜率'].map('{:.2f}%'.format)
+                            metrics_df['登场率'] = metrics_df['登场率'].map('{:.2f}%'.format)
+                            metrics_df['Ban率'] = metrics_df['Ban率'].map('{:.2f}%'.format)
+                            
+                            metrics_df.index = range(1, len(metrics_df) + 1)
+                            st.table(metrics_df)
+                    else:
+                        st.warning(f"🔍 找到了英雄 '{matched_hero}'，但其当前所有分路的登场率均低于 0.5%。")
                 else:
-                    st.warning(f"🔍 未能查找到满足条件的数据。请检查名字拼写，或该英雄当前所有分路的登场率均低于 0.5%。")
+                    # 搜索完全失败的提示保留
+                    st.warning(f"🔍 未能查找到与 '{search_query}' 相似的英雄。请检查名字拼写是否偏差过大。")
             else:
-                st.info("💡 请在上方输入框内输入英雄名字开始检索（支持跨分路联合查询）。")
+                st.info("💡 请在上方输入框内输入英雄名字开始检索（支持拼写纠错）。")
                 
     except Exception as e:
         st.error(f"处理错误: {e}")
