@@ -6,15 +6,62 @@ import plotly.graph_objects as go
 # 页面配置
 st.set_page_config(page_title="英雄数据专业平衡性分析系统", layout="wide")
 
+# ==========================================
+# 🎨 注入自定义 CSS 优化 UI (侧边栏深度定制)
+# ==========================================
+st.markdown("""
+<style>
+    /* 1. 调整侧边栏顶部边距，让上传组件贴紧左上角 */
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 2rem !important;
+    }
+    
+    /* 2. 改造 Radio 组件为大区块导航菜单 (类似 ChatGPT 会话列表) */
+    [data-testid="stRadio"] > div[role="radiogroup"] > label {
+        padding: 14px 16px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        background-color: transparent;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        width: 100%;
+        display: block;
+    }
+    /* 悬浮效果 */
+    [data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+        background-color: rgba(150, 150, 150, 0.1);
+    }
+    /* 隐藏原本的单选圆圈 */
+    [data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-of-type {
+        display: none;
+    }
+    /* 文字排版：取消缩进，加粗文字 */
+    [data-testid="stRadio"] > div[role="radiogroup"] > label > div:last-of-type {
+        margin-left: 0 !important;
+        font-size: 15px;
+        font-weight: 500;
+        padding-left: 5px;
+    }
+    /* 选中状态的高亮 (左侧边框指示器 + 专属背景色) */
+    [data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+        background-color: rgba(125, 153, 200, 0.15);
+        border-left: 4px solid #7D99C8;
+        border-radius: 4px 8px 8px 4px;
+    }
+    /* 隐藏上传组件的上方默认留白 */
+    [data-testid="stFileUploader"] {
+        margin-top: -10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
 # --- 视觉配色方案 ---
 COLOR_NORMAL = '#7D99C8'    # 柔和灰蓝
 COLOR_ABNORMAL = '#E67E7E'  # 柔和珊瑚红
 COLOR_BRIGHT_AXIS = '#FFB300' # 明亮的警戒线
 GRID_COLOR = 'rgba(200, 200, 200, 0.3)'
 
-# ==========================================
-# ⚙️ 平衡性参数配置表
-# ==========================================
 MMR_THRESHOLDS = {
     'low':    (54.5, 52.5, 49.0),
     'normal': (54.5, 52.5, 49.0),
@@ -71,20 +118,23 @@ def process_data_logic(file):
     df_filtered = df_full[df_full['登场率'] > 0.75].copy()
     return df_filtered, overall_avg_ban, df_full 
 
-# --- 侧边栏结构 ---
-st.sidebar.header("📂 数据导入")
-uploaded_file = st.sidebar.file_uploader("上传英雄数据 Excel", type=["xlsx", "xls"])
+# ==========================================
+# 🎛️ 侧边栏设计
+# ==========================================
+# 删除了所有的 header 标题，直接放置上传组件
+uploaded_file = st.sidebar.file_uploader("上传 Excel 文件", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     try:
         df, global_b_avg, df_raw = process_data_logic(uploaded_file)
         
-        # --- 侧边栏：页面导航 ---
-        st.sidebar.markdown("---")
-        st.sidebar.header("🧭 视图导航")
+        st.sidebar.markdown("<br>", unsafe_allow_html=True) # 增加一点呼吸空间
+        
+        # 使用 collapsed 隐藏自带标签，让 CSS 接管样式
         page_selection = st.sidebar.radio(
-            "选择要查看的板块：",
-            ["🚨 核心平衡性预警", "⚠️ Elite 胜率预警", "📈 详细图表诊断"]
+            "导航菜单",
+            ["🚨 核心平衡性预警", "⚠️ Elite 胜率预警", "📈 详细图表诊断"],
+            label_visibility="collapsed"
         )
         
         # ==========================================
@@ -130,7 +180,6 @@ if uploaded_file is not None:
         # ==========================================
         elif page_selection == "⚠️ Elite 胜率预警":
             st.write(f"### ⚠️ Elite 胜率预警看板")
-            # 阈值：登场率 > 1% 且 修复胜率 > 53%
             elite_warn_df = df_raw[
                 (df_raw['MMR'] == 'elite') & 
                 (df_raw['登场率'] > 1.0) & 
@@ -141,7 +190,6 @@ if uploaded_file is not None:
                 elite_warn_df = elite_warn_df[['英雄名', '位置', '修复胜率', '登场率']]
                 elite_warn_df = elite_warn_df.sort_values(by='修复胜率', ascending=False)
                 
-                # 格式化
                 elite_warn_df['修复胜率'] = elite_warn_df['修复胜率'].map('{:.2f}%'.format)
                 elite_warn_df['登场率'] = elite_warn_df['登场率'].map('{:.2f}%'.format)
                 elite_warn_df.index = range(1, len(elite_warn_df) + 1)
@@ -215,4 +263,5 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"处理错误: {e}")
 else:
-    st.info("👈 请在左侧上传 Excel 文件。")
+    # 引导页状态优化
+    st.info("👈 请在左侧上传 Excel 文件以开启分析。")
