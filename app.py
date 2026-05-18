@@ -129,7 +129,6 @@ if uploaded_file is not None:
         
         st.sidebar.markdown("<br>", unsafe_allow_html=True) 
         
-        # 【新增选项】在侧边栏导航菜单中加入了 🔍 英雄专项搜索
         page_selection = st.sidebar.radio(
             "导航菜单",
             ["🚨 核心平衡性预警", "⚠️ Elite 胜率预警", "📈 详细图表诊断", "🔍 英雄专项搜索"],
@@ -260,47 +259,42 @@ if uploaded_file is not None:
                     st.plotly_chart(fig_2d, use_container_width=True)
 
         # ==========================================
-        # 页面 4：🔍 英雄专项搜索 【新页面逻辑】
+        # 页面 4：🔍 英雄专项搜索 
         # ==========================================
         elif page_selection == "🔍 英雄专项搜索":
             st.write(f"### 🔍 英雄专项多维检索")
             
-            # 搜索框组件 (去除前后空格，忽略大小写)
             search_query = st.text_input("输入想要检索的英雄全称：", placeholder="例如：亚索")
             
             if search_query:
-                # 从 df_raw (包含未过滤的完整数据集) 提取匹配数据
                 search_target = search_query.strip().lower()
                 hero_result_df = df_raw[df_raw['英雄名'].str.lower() == search_target].copy()
                 
+                # 【阈值过滤】：排除登场率 < 0.5% 的冷门或异常数据
                 if not hero_result_df.empty:
-                    st.success(f"✨ 已成功抓取到 **{search_query}** 的全量多维表现数据：")
+                    hero_result_df = hero_result_df[hero_result_df['登场率'] >= 0.5]
+                
+                if not hero_result_df.empty:
+                    st.success(f"✨ 已成功抓取到 **{search_query}** 的多维表现数据 (已过滤登场率 < 0.5% 的异常记录)：")
                     
-                    # 1. 第一层划分：按【分路/位置】隔离存放
                     for position, pos_group in hero_result_df.groupby('位置'):
                         st.markdown(f"#### 📍 {position} 表现")
                         
-                        # 2. 第二层划分：固定熟练度(MMR)表现顺序为 Elite -> High -> Normal -> Low
                         mmr_rank = ['elite', 'high', 'normal', 'low']
                         pos_group['MMR'] = pd.Categorical(pos_group['MMR'], categories=mmr_rank, ordered=True)
                         pos_group = pos_group.sort_values('MMR')
                         
-                        # 3. 提取核心指标进行美化展现
-                        metrics_df = pos_group[['MMR', '修复胜率', '登场率', 'Ban率', '出现率']].copy()
+                        # 【字段精简】：去除了出现率，只保留核心三围
+                        metrics_df = pos_group[['MMR', '修复胜率', '登场率', 'Ban率']].copy()
                         
-                        # 数据格式美化加上百分号
                         metrics_df['修复胜率'] = metrics_df['修复胜率'].map('{:.2f}%'.format)
                         metrics_df['登场率'] = metrics_df['登场率'].map('{:.2f}%'.format)
                         metrics_df['Ban率'] = metrics_df['Ban率'].map('{:.2f}%'.format)
-                        metrics_df['出现率'] = metrics_df['出现率'].map('{:.2f}%'.format)
                         
-                        # 统一重置表格序号从 1 开始
                         metrics_df.index = range(1, len(metrics_df) + 1)
-                        
-                        # 渲染输出该分路的熟练度表格
                         st.table(metrics_df)
                 else:
-                    st.warning(f"🔍 未能在数据集中找到名为 '{search_query}' 的英雄，请确保拼写完全正确。")
+                    st.warning(f"🔍 未能查找到满足条件的数据。请检查名字拼写，或该英雄当前所有分路的登场率均低于 0.5%。")
             else:
                 st.info("💡 请在上方输入框内输入英雄名字开始检索（支持跨分路联合查询）。")
                 
