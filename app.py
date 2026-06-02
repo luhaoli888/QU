@@ -192,31 +192,30 @@ if uploaded_file is not None:
                 st.info("🎉 当前分段表现良好，暂无满足该条件的异常高胜率英雄。")
 
         # ==========================================
-        # 页面 3：🥶 极低出场率预警 (已优化阈值)
+        # 页面 3：🥶 极低出场率预警 (已改为平均登场率)
         # ==========================================
         elif page_selection == "🥶 极低出场率预警":
             st.write(f"### 🥶 极低出场率预警看板")
             
-            # 按英雄名查找其在所有 MMR 和位置中的【最高】登场率
-            hero_max_pick = df_raw.groupby('英雄名')['登场率'].max().reset_index()
+            # 【核心修改】计算每个英雄在所有记录中的【平均】登场率
+            hero_avg_pick = df_raw.groupby('英雄名')['登场率'].mean().reset_index()
             
-            # 【关键修改】设定更科学的 1.5% 阈值
             THRESHOLD_COLD = 1.5
-            cold_heroes_df = hero_max_pick[hero_max_pick['登场率'] < THRESHOLD_COLD].copy()
+            cold_heroes_df = hero_avg_pick[hero_avg_pick['登场率'] < THRESHOLD_COLD].copy()
             
             if not cold_heroes_df.empty:
-                # 按登场率从低到高排列（越冷门越靠前）
+                # 按登场率从低到高排列
                 cold_heroes_df = cold_heroes_df.sort_values(by='登场率', ascending=True)
                 
                 # 美化列名和数据格式
                 cold_heroes_df['登场率'] = cold_heroes_df['登场率'].map('{:.3f}%'.format)
-                cold_heroes_df.rename(columns={'登场率': '全段位最高登场率'}, inplace=True)
+                cold_heroes_df.rename(columns={'登场率': '全段位平均登场率'}, inplace=True)
                 cold_heroes_df.index = range(1, len(cold_heroes_df) + 1)
                 
-                st.markdown(f"👉 **入选条件：** 该英雄在**任意**分段(MMR)和**任意**位置的最高登场率均 `< {THRESHOLD_COLD}%`")
+                st.markdown(f"👉 **入选条件：** 该英雄的综合平均登场率 `< {THRESHOLD_COLD}%`")
                 st.table(cold_heroes_df)
             else:
-                st.info(f"🎉 当前全英雄出场率生态健康，暂无所有情况下登场率均低于 {THRESHOLD_COLD}% 的极度冷门英雄。")
+                st.info(f"🎉 当前全英雄出场率生态健康，暂无平均登场率低于 {THRESHOLD_COLD}% 的极度冷门英雄。")
 
         # ==========================================
         # 页面 4：详细图表诊断
