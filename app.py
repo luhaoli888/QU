@@ -192,54 +192,48 @@ if uploaded_file is not None:
                 st.info("🎉 当前分段表现良好，暂无满足该条件的异常高胜率英雄。")
 
         # ==========================================
-        # 页面 3：🥶 分路极低出场率预警 (动态比例防噪)
+        # 页面 3：🥶 分路极低出场率预警 (极简终极排异版)
         # ==========================================
         elif page_selection == "🥶 分路极低出场率预警":
             st.write(f"### 🥶 分路极低出场率预警看板")
             
-            # 1. 计算每个【英雄+位置】组合的平均登场率
+            # 1. 计算每个【英雄+位置】的平均登场率
             hero_pos_avg = df_raw.groupby(['英雄名', '位置'])['登场率'].mean().reset_index()
             
-            # 2. 找到该英雄在所有位置中的【最高登场率】(主职)
+            # 2. 找到该英雄出场率【最高】的分路，作为参照物
             hero_max_pick = hero_pos_avg.groupby('英雄名')['登场率'].max().reset_index()
-            hero_max_pick.rename(columns={'登场率': '主分路登场率'}, inplace=True)
+            hero_max_pick.rename(columns={'登场率': '最高分路登场率'}, inplace=True)
             
             # 3. 数据合并
             merged_df = pd.merge(hero_pos_avg, hero_max_pick, on='英雄名')
             
-            # 4. 定义阈值
-            THRESHOLD_COLD = 0.5   # 预警线：平均登场率 < 0.5% 即算冷门候选
-            RATIO_IGNORE = 0.3     # 比例线：如果不到主分路登场率的 30%，判定为跨界整活
+            # 4. 【核心逻辑设定】
+            THRESHOLD_COLD = 1.0    # 预警线：< 1.0%
+            THRESHOLD_IGNORE = 0.5  # 防噪线：< 0.5% 直接删
             
-            # 5. 初步获取预警名单
-            cold_candidates = merged_df[merged_df['登场率'] < THRESHOLD_COLD].copy()
+            # 规则 A: 抓取所有出场率不足 1.0% 的分路
+            mask_cold = merged_df['登场率'] < THRESHOLD_COLD
             
-            # 6. 【核心：动态比例防噪】
-            # 排除A：绝对的极端冷门噪音 (小于0.1%直接杀)
-            mask_tiny = cold_candidates['登场率'] < 0.1
+            # 规则 B (防噪): 保留出场率 >= 0.5% 的数据。
+            # 例外：如果某数据 < 0.5%，但它偏偏是该英雄最常玩的位置（死透了），那也予以保留曝光。
+            mask_valid = (merged_df['登场率'] >= THRESHOLD_IGNORE) | (merged_df['登场率'] == merged_df['最高分路登场率'])
             
-            # 排除B：如果这个位置的出场率，连他老本行的 30% 都达不到，说明是强行凑数的噪音
-            mask_ratio = cold_candidates['登场率'] < (cold_candidates['主分路登场率'] * RATIO_IGNORE)
-            
-            noise_mask = mask_tiny | mask_ratio
-            final_cold_df = cold_candidates[~noise_mask].copy()
+            # 执行过滤
+            final_cold_df = merged_df[mask_cold & mask_valid].copy()
             
             if not final_cold_df.empty:
-                # 排序：按该分路平均登场率从低到高排列
+                # 排序：按出场率从低到高排列
                 final_cold_df = final_cold_df.sort_values(by='登场率', ascending=True)
                 
                 # 格式化展示
                 final_cold_df['登场率'] = final_cold_df['登场率'].map('{:.3f}%'.format)
                 
-                # 重命名并精简列
+                # 重命名并保持极简 UI 列
                 final_cold_df.rename(columns={'位置': '预警分路', '登场率': '该分路平均登场率'}, inplace=True)
                 final_cold_df = final_cold_df[['英雄名', '预警分路', '该分路平均登场率']]
                 final_cold_df.index = range(1, len(final_cold_df) + 1)
                 
-                st.markdown(f"👉 **判定逻辑：**")
-                st.markdown(f"- 只提取英雄平均登场率 `< {THRESHOLD_COLD}%` 的冷门数据。")
-                st.markdown(f"- **动态比例防噪**：允许戴安娜这类双修英雄同上榜；但如果某分路出场率连该英雄**最常玩分路的 30%** 都达不到（如格温打野），则精准判定为废数据并清除。")
-                
+                st.markdown(f"👉 **入选条件：** 该分路平均登场率 `< {THRESHOLD_COLD}%`（已自动剔除 `< {THRESHOLD_IGNORE}%` 的绝活/整活客串数据）。")
                 st.table(final_cold_df)
             else:
                 st.info(f"🎉 当前环境暂无符合条件的冷门分路数据。")
@@ -300,56 +294,3 @@ if uploaded_file is not None:
                                                 line=dict(color=COLOR_BRIGHT_AXIS, width=3), name='加强线'))
                     fig_2d.add_vline(x=0, line_width=2, line_color='rgba(80,80,80,0.6)')
                     fig_2d.add_hline(y=40, line_width=2, line_color='rgba(80,80,80,0.6)')
-                    fig_2d.update_xaxes(ticksuffix='%', range=[-0.5, max_x], showgrid=True, gridcolor=GRID_COLOR)
-                    fig_2d.update_yaxes(ticksuffix='%', range=[min_y, max_y], showgrid=True, gridcolor=GRID_COLOR)
-                    fig_2d.update_layout(showlegend=False, margin=dict(t=50, b=50, l=50, r=50))
-                    st.plotly_chart(fig_2d, use_container_width=True)
-
-        # ==========================================
-        # 页面 5：🔍 英雄专项搜索 
-        # ==========================================
-        elif page_selection == "🔍 英雄专项搜索":
-            st.write(f"### 🔍 英雄专项多维检索")
-            
-            search_query = st.text_input("输入想要检索的英雄全称：", placeholder="例如：亚索")
-            
-            if search_query:
-                search_target = search_query.strip().lower()
-                all_heroes = df_raw['英雄名'].dropna().unique().tolist()
-                matches = difflib.get_close_matches(search_target, all_heroes, n=1, cutoff=0.4)
-                
-                if matches:
-                    matched_hero = matches[0] 
-                    hero_result_df = df_raw[df_raw['英雄名'] == matched_hero].copy()
-                    hero_result_df = hero_result_df[hero_result_df['登场率'] >= 0.5]
-                    
-                    if not hero_result_df.empty:
-                        if search_target != matched_hero.lower():
-                            st.caption(f"💡 自动为您匹配到最相似的英雄：**{matched_hero}**")
-                        
-                        for position, pos_group in hero_result_df.groupby('位置'):
-                            st.markdown(f"#### 📍 {position} 表现")
-                            
-                            mmr_rank = ['elite', 'high', 'normal', 'low']
-                            pos_group['MMR'] = pd.Categorical(pos_group['MMR'], categories=mmr_rank, ordered=True)
-                            pos_group = pos_group.sort_values('MMR')
-                            
-                            metrics_df = pos_group[['MMR', '修复胜率', '登场率', 'Ban率']].copy()
-                            
-                            metrics_df['修复胜率'] = metrics_df['修复胜率'].map('{:.2f}%'.format)
-                            metrics_df['登场率'] = metrics_df['登场率'].map('{:.2f}%'.format)
-                            metrics_df['Ban率'] = metrics_df['Ban率'].map('{:.2f}%'.format)
-                            
-                            metrics_df.index = range(1, len(metrics_df) + 1)
-                            st.table(metrics_df)
-                    else:
-                        st.warning(f"🔍 找到了英雄 '{matched_hero}'，但其当前所有分路的登场率均低于 0.5%。")
-                else:
-                    st.warning(f"🔍 未能查找到与 '{search_query}' 相似的英雄。请检查名字拼写是否偏差过大。")
-            else:
-                st.info("💡 请在上方输入框内输入英雄名字开始检索（支持拼写纠错）。")
-                
-    except Exception as e:
-        st.error(f"处理错误: {e}")
-else:
-    st.info("👈 请在左侧上传 Excel 文件以开启分析。")
