@@ -192,7 +192,7 @@ if uploaded_file is not None:
                 st.info("🎉 当前分段表现良好，暂无满足该条件的异常高胜率英雄。")
 
         # ==========================================
-        # 页面 3：🥶 分路极低出场率预警 (极简终极排异版)
+        # 页面 3：🥶 分路极低出场率预警 (三维防噪完美版)
         # ==========================================
         elif page_selection == "🥶 分路极低出场率预警":
             st.write(f"### 🥶 分路极低出场率预警看板")
@@ -200,29 +200,32 @@ if uploaded_file is not None:
             # 1. 计算每个【英雄+位置】的平均登场率
             hero_pos_avg = df_raw.groupby(['英雄名', '位置'])['登场率'].mean().reset_index()
             
-            # 2. 找到该英雄出场率【最高】的分路，作为参照物
+            # 2. 找到该英雄出场率【最高】的分路，作为老本行参照物
             hero_max_pick = hero_pos_avg.groupby('英雄名')['登场率'].max().reset_index()
             hero_max_pick.rename(columns={'登场率': '最高分路登场率'}, inplace=True)
             
             # 3. 数据合并
             merged_df = pd.merge(hero_pos_avg, hero_max_pick, on='英雄名')
             
-            # 4. 【核心逻辑设定】
-            THRESHOLD_COLD = 1.0    # 预警线：< 1.0%
-            THRESHOLD_IGNORE = 0.5  # 防噪线：< 0.5% 直接删
+            # 4. 【核心控制面板】
+            THRESHOLD_COLD = 1.0     # 预警线：< 1.0% 就属于冷门候选
+            THRESHOLD_IGNORE = 0.5   # 绝对底线：< 0.5% 直接删
+            RATIO_IGNORE = 0.4       # 相对底线：如果不到本职工作的 40%，直接删 (用 40% 完美保住蒙多，杀掉格温中单)
             
-            # 规则 A: 抓取所有出场率不足 1.0% 的分路
+            # 规则 A: 候选池抓取
             mask_cold = merged_df['登场率'] < THRESHOLD_COLD
             
-            # 规则 B (防噪): 保留出场率 >= 0.5% 的数据。
-            # 例外：如果某数据 < 0.5%，但它偏偏是该英雄最常玩的位置（死透了），那也予以保留曝光。
-            mask_valid = (merged_df['登场率'] >= THRESHOLD_IGNORE) | (merged_df['登场率'] == merged_df['最高分路登场率'])
+            # 规则 B (绝对底线防噪): 必须 >= 0.5%，除非它是英雄的本职工作（说明死透了）
+            mask_absolute_valid = (merged_df['登场率'] >= THRESHOLD_IGNORE) | (merged_df['登场率'] == merged_df['最高分路登场率'])
             
-            # 执行过滤
-            final_cold_df = merged_df[mask_cold & mask_valid].copy()
+            # 规则 C (相对比例防噪): 必须 >= 老本行的 40%，除非它是英雄的本职工作
+            mask_relative_valid = (merged_df['登场率'] >= merged_df['最高分路登场率'] * RATIO_IGNORE) | (merged_df['登场率'] == merged_df['最高分路登场率'])
+            
+            # 终极合并过滤
+            final_cold_df = merged_df[mask_cold & mask_absolute_valid & mask_relative_valid].copy()
             
             if not final_cold_df.empty:
-                # 排序：按出场率从低到高排列
+                # 排序：按该分路平均登场率从低到高排列
                 final_cold_df = final_cold_df.sort_values(by='登场率', ascending=True)
                 
                 # 格式化展示
@@ -233,7 +236,9 @@ if uploaded_file is not None:
                 final_cold_df = final_cold_df[['英雄名', '预警分路', '该分路平均登场率']]
                 final_cold_df.index = range(1, len(final_cold_df) + 1)
                 
-                st.markdown(f"👉 **入选条件：** 该分路平均登场率 `< {THRESHOLD_COLD}%`（已自动剔除 `< {THRESHOLD_IGNORE}%` 的绝活/整活客串数据）。")
+                st.markdown(f"👉 **入选条件：** 该分路登场率 `< {THRESHOLD_COLD}%`。")
+                st.markdown(f"💡 **智能防噪**：已自动过滤登场率极低(`< {THRESHOLD_IGNORE}%`)，以及出场率不足该英雄主玩位置 `{int(RATIO_IGNORE*100)}%` 的恶意客串数据。")
+                
                 st.table(final_cold_df)
             else:
                 st.info(f"🎉 当前环境暂无符合条件的冷门分路数据。")
