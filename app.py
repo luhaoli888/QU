@@ -294,3 +294,56 @@ if uploaded_file is not None:
                                                 line=dict(color=COLOR_BRIGHT_AXIS, width=3), name='加强线'))
                     fig_2d.add_vline(x=0, line_width=2, line_color='rgba(80,80,80,0.6)')
                     fig_2d.add_hline(y=40, line_width=2, line_color='rgba(80,80,80,0.6)')
+                    fig_2d.update_xaxes(ticksuffix='%', range=[-0.5, max_x], showgrid=True, gridcolor=GRID_COLOR)
+                    fig_2d.update_yaxes(ticksuffix='%', range=[min_y, max_y], showgrid=True, gridcolor=GRID_COLOR)
+                    fig_2d.update_layout(showlegend=False, margin=dict(t=50, b=50, l=50, r=50))
+                    st.plotly_chart(fig_2d, use_container_width=True)
+
+        # ==========================================
+        # 页面 5：🔍 英雄专项搜索 
+        # ==========================================
+        elif page_selection == "🔍 英雄专项搜索":
+            st.write(f"### 🔍 英雄专项多维检索")
+            
+            search_query = st.text_input("输入想要检索的英雄全称：", placeholder="例如：亚索")
+            
+            if search_query:
+                search_target = search_query.strip().lower()
+                all_heroes = df_raw['英雄名'].dropna().unique().tolist()
+                matches = difflib.get_close_matches(search_target, all_heroes, n=1, cutoff=0.4)
+                
+                if matches:
+                    matched_hero = matches[0] 
+                    hero_result_df = df_raw[df_raw['英雄名'] == matched_hero].copy()
+                    hero_result_df = hero_result_df[hero_result_df['登场率'] >= 0.5]
+                    
+                    if not hero_result_df.empty:
+                        if search_target != matched_hero.lower():
+                            st.caption(f"💡 自动为您匹配到最相似的英雄：**{matched_hero}**")
+                        
+                        for position, pos_group in hero_result_df.groupby('位置'):
+                            st.markdown(f"#### 📍 {position} 表现")
+                            
+                            mmr_rank = ['elite', 'high', 'normal', 'low']
+                            pos_group['MMR'] = pd.Categorical(pos_group['MMR'], categories=mmr_rank, ordered=True)
+                            pos_group = pos_group.sort_values('MMR')
+                            
+                            metrics_df = pos_group[['MMR', '修复胜率', '登场率', 'Ban率']].copy()
+                            
+                            metrics_df['修复胜率'] = metrics_df['修复胜率'].map('{:.2f}%'.format)
+                            metrics_df['登场率'] = metrics_df['登场率'].map('{:.2f}%'.format)
+                            metrics_df['Ban率'] = metrics_df['Ban率'].map('{:.2f}%'.format)
+                            
+                            metrics_df.index = range(1, len(metrics_df) + 1)
+                            st.table(metrics_df)
+                    else:
+                        st.warning(f"🔍 找到了英雄 '{matched_hero}'，但其当前所有分路的登场率均低于 0.5%。")
+                else:
+                    st.warning(f"🔍 未能查找到与 '{search_query}' 相似的英雄。请检查名字拼写是否偏差过大。")
+            else:
+                st.info("💡 请在上方输入框内输入英雄名字开始检索（支持拼写纠错）。")
+                
+    except Exception as e:
+        st.error(f"处理错误: {e}")
+else:
+    st.info("👈 请在左侧上传 Excel 文件以开启分析。")
