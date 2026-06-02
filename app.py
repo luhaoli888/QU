@@ -192,7 +192,7 @@ if uploaded_file is not None:
                 st.info("🎉 当前分段表现良好，暂无满足该条件的异常高胜率英雄。")
 
         # ==========================================
-        # 页面 3：🥶 分路极低出场率预警 (新增热门英雄排异逻辑)
+        # 页面 3：🥶 分路极低出场率预警 (无死角防噪逻辑)
         # ==========================================
         elif page_selection == "🥶 分路极低出场率预警":
             st.write(f"### 🥶 分路极低出场率预警看板")
@@ -207,22 +207,22 @@ if uploaded_file is not None:
             # 3. 数据合并
             merged_df = pd.merge(hero_pos_avg, hero_max_pick, on='英雄名')
             
-            # 4. 定义阈值
+            # 4. 定义绝对阈值
             THRESHOLD_COLD = 1.0   # 警告线：分路登场率 < 1.0% 就属于冷门候选
-            THRESHOLD_IGNORE = 0.5 # 底层噪音线：出场率 < 0.5% 的绝活噪音
-            THRESHOLD_META = 3.0   # 【新增】热门英雄排异线：最高登场率 >= 3.0% 则彻底无视其低出场率分路
+            THRESHOLD_IGNORE = 0.5 # 噪音线：登场率 < 0.5% 直接认定为非主流整活
+            THRESHOLD_META = 3.0   # 热门排异线：最高登场率 >= 3.0% 则彻底无视其低出场率分路
             
             # 5. 初步筛选候选名单
             cold_candidates = merged_df[merged_df['登场率'] < THRESHOLD_COLD].copy()
             
-            # 6. 【全面防噪逻辑】
-            # 条件 A (底层防噪)：拥有常规分路(>=1.0%) 且 当前分路极低(<0.5%)
-            mask_base_noise = (cold_candidates['该英雄最高分路登场率'] >= THRESHOLD_COLD) & (cold_candidates['登场率'] < THRESHOLD_IGNORE)
+            # 6. 【绝对防噪逻辑 - 修复版】
+            # 噪音 A：登场率低于 0.5%，且这【不是】该英雄出场率最高的分路 (纯副职整活，像辛吉德游走、格温打野)
+            mask_noise_A = (cold_candidates['登场率'] < THRESHOLD_IGNORE) & (cold_candidates['登场率'] < cold_candidates['该英雄最高分路登场率'])
             
-            # 条件 B (热门防噪)：英雄在主要分路非常热门(>=3.0%)，无论客串分路数据是多少，统统作为热门溢出效应无视
-            mask_meta_noise = (cold_candidates['该英雄最高分路登场率'] >= THRESHOLD_META)
+            # 噪音 B：热门英雄的溢出效应（主分路出场率极高，其他分路的低出场率完全是干扰项）
+            mask_noise_B = (cold_candidates['该英雄最高分路登场率'] >= THRESHOLD_META)
             
-            noise_mask = mask_base_noise | mask_meta_noise
+            noise_mask = mask_noise_A | mask_noise_B
             
             final_cold_df = cold_candidates[~noise_mask].copy()
             
@@ -239,9 +239,9 @@ if uploaded_file is not None:
                 final_cold_df.index = range(1, len(final_cold_df) + 1)
                 
                 st.markdown(f"👉 **判定逻辑：**")
-                st.markdown(f"- 提取英雄在分路的平均登场率 `< {THRESHOLD_COLD}%` 的记录。")
-                st.markdown(f"- **底层排异**：自动屏蔽 `< {THRESHOLD_IGNORE}%` 的绝活/错位数据。")
-                st.markdown(f"- **热门排异**：如果该英雄的主流分路登场率 `≥ {THRESHOLD_META}%` (版本大热)，直接无视其所有低出场率的客串位置。")
+                st.markdown(f"- 提取英雄在分路的平均登场率 `< {THRESHOLD_COLD}%` 的预警记录。")
+                st.markdown(f"- **无死角防噪**：自动屏蔽任何 `< {THRESHOLD_IGNORE}%` 的绝活/错位整活数据（除非该英雄全线崩塌，最高出场率也不足 {THRESHOLD_IGNORE}%）。")
+                st.markdown(f"- **热门排异**：如果该英雄的主流分路属于版本热门 (`≥ {THRESHOLD_META}%`)，自动无视其客串位置。")
                 
                 st.table(final_cold_df)
             else:
