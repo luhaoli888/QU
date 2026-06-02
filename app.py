@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import difflib  # 【新增】引入 Python 内置的文本比对库，用于实现模糊搜索
+import difflib  
 
 # 页面配置
 st.set_page_config(page_title="英雄数据专业平衡性分析系统", layout="wide")
@@ -12,12 +12,10 @@ st.set_page_config(page_title="英雄数据专业平衡性分析系统", layout=
 # ==========================================
 st.markdown("""
 <style>
-    /* 1. 调整侧边栏顶部边距，让上传组件贴紧左上角 */
     [data-testid="stSidebar"] > div:first-child {
         padding-top: 2rem !important;
     }
     
-    /* 2. 改造侧边栏里的 Radio 组件，不影响主页面 */
     [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label {
         padding: 14px 16px;
         border-radius: 8px;
@@ -28,28 +26,23 @@ st.markdown("""
         width: 100%;
         display: block;
     }
-    /* 悬浮效果 */
     [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
         background-color: rgba(150, 150, 150, 0.1);
     }
-    /* 隐藏原本的单选圆圈 */
     [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-of-type {
         display: none;
     }
-    /* 文字排版：取消缩进，加粗文字 */
     [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label > div:last-of-type {
         margin-left: 0 !important;
         font-size: 15px;
         font-weight: 500;
         padding-left: 5px;
     }
-    /* 选中状态的高亮 (左侧边框指示器 + 专属背景色) */
     [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
         background-color: rgba(125, 153, 200, 0.15);
         border-left: 4px solid #7D99C8;
         border-radius: 4px 8px 8px 4px;
     }
-    /* 隐藏上传组件的上方默认留白 */
     [data-testid="stFileUploader"] {
         margin-top: -10px;
     }
@@ -58,9 +51,9 @@ st.markdown("""
 
 
 # --- 视觉配色方案 ---
-COLOR_NORMAL = '#7D99C8'    # 柔和灰蓝
-COLOR_ABNORMAL = '#E67E7E'  # 柔和珊瑚红
-COLOR_BRIGHT_AXIS = '#FFB300' # 明亮的警戒线
+COLOR_NORMAL = '#7D99C8'    
+COLOR_ABNORMAL = '#E67E7E'  
+COLOR_BRIGHT_AXIS = '#FFB300' 
 GRID_COLOR = 'rgba(200, 200, 200, 0.3)'
 
 MMR_THRESHOLDS = {
@@ -130,9 +123,10 @@ if uploaded_file is not None:
         
         st.sidebar.markdown("<br>", unsafe_allow_html=True) 
         
+        # 【修改】将极低出场率预警安插在了第三个位置
         page_selection = st.sidebar.radio(
             "导航菜单",
-            ["🚨 核心平衡性预警", "⚠️ Elite 胜率预警", "📈 详细图表诊断", "🔍 英雄专项搜索"],
+            ["🚨 核心平衡性预警", "⚠️ Elite 胜率预警", "🥶 极低出场率预警", "📈 详细图表诊断", "🔍 英雄专项搜索"],
             label_visibility="collapsed"
         )
         
@@ -199,7 +193,33 @@ if uploaded_file is not None:
                 st.info("🎉 当前分段表现良好，暂无满足该条件的异常高胜率英雄。")
 
         # ==========================================
-        # 页面 3：详细图表诊断
+        # 页面 3：🥶 极低出场率预警 (新增板块)
+        # ==========================================
+        elif page_selection == "🥶 极低出场率预警":
+            st.write(f"### 🥶 极低出场率预警看板")
+            
+            # 按英雄名汇总所有 MMR 和位置的登场率
+            hero_total_pick = df_raw.groupby('英雄名')['登场率'].sum().reset_index()
+            
+            # 过滤出总和不足 0.5% 的英雄
+            cold_heroes_df = hero_total_pick[hero_total_pick['登场率'] < 0.5].copy()
+            
+            if not cold_heroes_df.empty:
+                # 按登场率从低到高排列（越冷门越靠前）
+                cold_heroes_df = cold_heroes_df.sort_values(by='登场率', ascending=True)
+                
+                # 美化列名和数据格式
+                cold_heroes_df['登场率'] = cold_heroes_df['登场率'].map('{:.3f}%'.format)
+                cold_heroes_df.rename(columns={'登场率': '全段位及分路总登场率'}, inplace=True)
+                cold_heroes_df.index = range(1, len(cold_heroes_df) + 1)
+                
+                st.markdown("👉 **入选条件：** 该英雄在所有分段(MMR)和所有位置的登场率加总 `< 0.5%`")
+                st.table(cold_heroes_df)
+            else:
+                st.info("🎉 当前全英雄出场率生态健康，暂无加总登场率低于 0.5% 的极度冷门英雄。")
+
+        # ==========================================
+        # 页面 4：详细图表诊断
         # ==========================================
         elif page_selection == "📈 详细图表诊断":
             st.write(f"### 📈 详细图表诊断")
@@ -260,7 +280,7 @@ if uploaded_file is not None:
                     st.plotly_chart(fig_2d, use_container_width=True)
 
         # ==========================================
-        # 页面 4：🔍 英雄专项搜索 【优化：模糊搜索 + 去除成功提示】
+        # 页面 5：🔍 英雄专项搜索 
         # ==========================================
         elif page_selection == "🔍 英雄专项搜索":
             st.write(f"### 🔍 英雄专项多维检索")
@@ -269,26 +289,18 @@ if uploaded_file is not None:
             
             if search_query:
                 search_target = search_query.strip().lower()
-                
-                # 提取所有唯一的英雄名列表
                 all_heroes = df_raw['英雄名'].dropna().unique().tolist()
-                
-                # 【新增】使用 difflib 进行模糊匹配 (cutoff=0.4 允许一定的错别字容错率)
                 matches = difflib.get_close_matches(search_target, all_heroes, n=1, cutoff=0.4)
                 
                 if matches:
-                    matched_hero = matches[0] # 获取匹配度最高的名字
+                    matched_hero = matches[0] 
                     hero_result_df = df_raw[df_raw['英雄名'] == matched_hero].copy()
-                    
-                    # 【阈值过滤】：排除登场率 < 0.5% 的数据
                     hero_result_df = hero_result_df[hero_result_df['登场率'] >= 0.5]
                     
                     if not hero_result_df.empty:
-                        # 只有在输入和匹配结果不完全一致时，才稍微提醒一下纠错了
                         if search_target != matched_hero.lower():
                             st.caption(f"💡 自动为您匹配到最相似的英雄：**{matched_hero}**")
                         
-                        # 按位置循环展示
                         for position, pos_group in hero_result_df.groupby('位置'):
                             st.markdown(f"#### 📍 {position} 表现")
                             
@@ -307,7 +319,6 @@ if uploaded_file is not None:
                     else:
                         st.warning(f"🔍 找到了英雄 '{matched_hero}'，但其当前所有分路的登场率均低于 0.5%。")
                 else:
-                    # 搜索完全失败的提示保留
                     st.warning(f"🔍 未能查找到与 '{search_query}' 相似的英雄。请检查名字拼写是否偏差过大。")
             else:
                 st.info("💡 请在上方输入框内输入英雄名字开始检索（支持拼写纠错）。")
