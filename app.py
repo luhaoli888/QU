@@ -207,14 +207,14 @@ if uploaded_file is not None:
             # 3. 数据合并
             merged_df = pd.merge(hero_pos_avg, hero_max_pick, on='英雄名')
             
-            # 4. 定义阈值
-            THRESHOLD_COLD = 1.0  # 认定为冷门的基准线
-            THRESHOLD_IGNORE = 0.1 # 判定为非主流整活(直接无视)的极低线
+            # 4. 【核心逻辑更新】定义阈值
+            THRESHOLD_COLD = 1.0   # 主预警线：分路登场率 < 1.0%
+            THRESHOLD_IGNORE = 0.5 # 防噪排异线：如果属于非主流整活，登场率 < 0.5% 直接无视
             
             # 5. 初步筛选：分路登场率 < 1.0% 的候选名单
             cold_candidates = merged_df[merged_df['登场率'] < THRESHOLD_COLD].copy()
             
-            # 6. 【核心：排异逻辑】如果该英雄有其他正常分路 (最高登场率 >= 1.0%) 且 当前分路属于极低频整活 (< 0.1%) -> 作为噪音排除
+            # 6. 【防噪排异】如果该英雄有其他正常分路 (最高 >= 1.0%) 且 当前分路登场率过低 (< 0.5%) -> 判定为噪音无视
             noise_mask = (cold_candidates['该英雄最高分路登场率'] >= THRESHOLD_COLD) & (cold_candidates['登场率'] < THRESHOLD_IGNORE)
             
             final_cold_df = cold_candidates[~noise_mask].copy()
@@ -225,16 +225,15 @@ if uploaded_file is not None:
                 
                 # 格式化展示
                 final_cold_df['登场率'] = final_cold_df['登场率'].map('{:.3f}%'.format)
-                final_cold_df['该英雄最高分路登场率'] = final_cold_df['该英雄最高分路登场率'].map('{:.3f}%'.format)
                 
-                # 重命名与重置序号
+                # 重命名并剔除 "该英雄最高分路登场率" 列
                 final_cold_df.rename(columns={'位置': '预警分路', '登场率': '该分路平均登场率'}, inplace=True)
-                final_cold_df = final_cold_df[['英雄名', '预警分路', '该分路平均登场率', '该英雄最高分路登场率']]
+                final_cold_df = final_cold_df[['英雄名', '预警分路', '该分路平均登场率']]
                 final_cold_df.index = range(1, len(final_cold_df) + 1)
                 
                 st.markdown(f"👉 **判定逻辑：**")
-                st.markdown(f"- 提取该英雄在具体分路的平均登场率 `< {THRESHOLD_COLD}%` 的记录。")
-                st.markdown(f"- **智能防噪**：如果某英雄拥有登场率 `≥ {THRESHOLD_COLD}%` 的常规分路，则自动无视出场率 `< {THRESHOLD_IGNORE}%` 的绝活/非主流对局噪音。")
+                st.markdown(f"- 提取该英雄在具体分路的平均登场率 `< {THRESHOLD_COLD}%` 的数据。")
+                st.markdown(f"- **智能防噪**：如果某英雄已拥有登场率 `≥ {THRESHOLD_COLD}%` 的正常主流分路，则直接无视其在其他分路出场率 `< {THRESHOLD_IGNORE}%` 的绝活/整活数据。")
                 
                 st.table(final_cold_df)
             else:
