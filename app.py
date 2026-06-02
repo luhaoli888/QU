@@ -123,7 +123,6 @@ if uploaded_file is not None:
         
         st.sidebar.markdown("<br>", unsafe_allow_html=True) 
         
-        # 【修改】将极低出场率预警安插在了第三个位置
         page_selection = st.sidebar.radio(
             "导航菜单",
             ["🚨 核心平衡性预警", "⚠️ Elite 胜率预警", "🥶 极低出场率预警", "📈 详细图表诊断", "🔍 英雄专项搜索"],
@@ -193,16 +192,16 @@ if uploaded_file is not None:
                 st.info("🎉 当前分段表现良好，暂无满足该条件的异常高胜率英雄。")
 
         # ==========================================
-        # 页面 3：🥶 极低出场率预警 (新增板块)
+        # 页面 3：🥶 极低出场率预警 
         # ==========================================
         elif page_selection == "🥶 极低出场率预警":
             st.write(f"### 🥶 极低出场率预警看板")
             
-            # 按英雄名汇总所有 MMR 和位置的登场率
-            hero_total_pick = df_raw.groupby('英雄名')['登场率'].sum().reset_index()
+            # 【核心修改】按英雄名查找其在所有 MMR 和位置中的【最高】登场率
+            hero_max_pick = df_raw.groupby('英雄名')['登场率'].max().reset_index()
             
-            # 过滤出总和不足 0.5% 的英雄
-            cold_heroes_df = hero_total_pick[hero_total_pick['登场率'] < 0.5].copy()
+            # 过滤出最高登场率依然不足 0.5% 的英雄 (即所有情况下都 < 0.5%)
+            cold_heroes_df = hero_max_pick[hero_max_pick['登场率'] < 0.5].copy()
             
             if not cold_heroes_df.empty:
                 # 按登场率从低到高排列（越冷门越靠前）
@@ -210,13 +209,13 @@ if uploaded_file is not None:
                 
                 # 美化列名和数据格式
                 cold_heroes_df['登场率'] = cold_heroes_df['登场率'].map('{:.3f}%'.format)
-                cold_heroes_df.rename(columns={'登场率': '全段位及分路总登场率'}, inplace=True)
+                cold_heroes_df.rename(columns={'登场率': '全段位最高登场率'}, inplace=True)
                 cold_heroes_df.index = range(1, len(cold_heroes_df) + 1)
                 
-                st.markdown("👉 **入选条件：** 该英雄在所有分段(MMR)和所有位置的登场率加总 `< 0.5%`")
+                st.markdown("👉 **入选条件：** 该英雄在**任意**分段(MMR)和**任意**位置的登场率均 `< 0.5%`")
                 st.table(cold_heroes_df)
             else:
-                st.info("🎉 当前全英雄出场率生态健康，暂无加总登场率低于 0.5% 的极度冷门英雄。")
+                st.info("🎉 当前全英雄出场率生态健康，暂无所有情况下登场率均低于 0.5% 的极度冷门英雄。")
 
         # ==========================================
         # 页面 4：详细图表诊断
